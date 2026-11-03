@@ -1,0 +1,49 @@
+# Tree-cover mapping: Sentinel-2 L2A 2021 composites, ESA WorldCover 2021 (v200) labels.
+# WorldCover is itself derived from Sentinel data, so the test labels are not
+# independent ground truth; see the limitations section of the paper.
+task: forest
+use_pre: false
+data_dir: data/forest
+run_dir: runs/forest
+seed: 0
+
+source:
+  name: planetary_computer
+  year: 2021                # before the Jan-2022 L2A radiometric offset change
+  months: [6, 7, 8, 9]      # leaf-on season (swap to [12, 1, 2, 3] for southern AOIs if needed)
+  max_cloud: 30
+  chip_size: 256
+  split_fractions: {train: 0.6, val: 0.2, test: 0.2}   # contiguous west-to-east column blocks per AOI
+  # name: [min_lon, min_lat, max_lon, max_lat]; chosen to cover distinct biomes and NDVI confounders
+  aois:
+    brittany_paimpont:   [-2.30, 47.97, -2.12, 48.09]   # temperate broadleaf, hedgerow farmland
+    murree_galiyat:      [73.33, 33.86, 73.51, 33.98]   # Himalayan conifer, terraces
+    rondonia_frontier:   [-63.05, -10.05, -62.87, -9.87] # tropical forest vs pasture
+    riau_plantations:    [101.40, 0.40, 101.58, 0.58]   # oil palm / acacia plantations
+    dalarna_boreal:      [15.00, 61.00, 15.30, 61.10]   # boreal conifer, clear-cuts, bogs
+    mau_forest:          [35.65, -0.60, 35.83, -0.42]   # montane forest vs tea and cropland
+    sacramento_valley:   [-121.95, 38.95, -121.77, 39.13] # irrigated crops (high NDVI, no trees)
+
+index:
+  name: ndvi
+  literature_threshold: 0.50
+
+unet:
+  encoder: resnet18
+  encoder_weights: imagenet
+  epochs: 40
+  batch_size: 8
+  lr: 0.001
+  num_workers: 2
+
+lgbm:
+  pixels_per_chip: 2000
+  num_leaves: 63
+  n_estimators: 400
+  learning_rate: 0.05
+
+explain:
+  n_chips: 60
+  ig_steps: 32
+  context_pixels_per_chip: 16
+  shap_pixels: 5000

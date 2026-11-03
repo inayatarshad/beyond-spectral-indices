@@ -1,0 +1,234 @@
+%% ACM SIGSPATIAL submission. Compile on Overleaf (acmart ships with TeX Live) or with
+%%   latexmk -pdf main.tex
+%% For review: keep "review,anonymous". For camera-ready: remove both and fill in rights info.
+\documentclass[sigconf,review,anonymous]{acmart}
+
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+%% Results come from scripts/make_paper_assets.py. Missing values render as red "??".
+\IfFileExists{tables/results_macros.tex}{\input{tables/results_macros.tex}}{}
+\newcommand{\R}[1]{\ifcsname #1\endcsname\csname #1\endcsname\else\textcolor{red}{??}\fi}
+\newcommand{\maybeinput}[1]{\IfFileExists{#1}{\input{#1}}{\textcolor{red}{[missing #1 -- run make\_paper\_assets.py]}}}
+\newcommand{\maybefig}[2]{\IfFileExists{#2}{\includegraphics[width=#1]{#2}}{\fbox{\textcolor{red}{missing #2}}}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\setcopyright{none}
+\acmConference[SIGSPATIAL '27]{The 35th ACM International Conference on Advances in Geographic Information Systems}{2027}{}
+\acmYear{2027}
+\acmDOI{}
+\acmISBN{}
+
+\begin{document}
+
+\title[Disentangling Spectral and Spatial Evidence]{Disentangling Spectral and Spatial Evidence in Deep Burn-Scar and Forest Segmentation: A Factorial Ablation with Faithfulness-Checked Attributions}
+
+\author{Inayat Arshad}
+\affiliation{%
+  \institution{Pakistan Institute of Engineering and Applied Sciences}
+  \city{Islamabad}
+  \country{Pakistan}}
+\email{enayyat156@gmail.com}
+
+\begin{abstract}
+Normalised difference indices such as the Normalized Burn Ratio (NBR) and the Normalized Difference Vegetation Index (NDVI) remain the operational default for mapping burn scars and forest cover from Sentinel-2, because they are cheap, transparent and physically grounded. Deep segmentation networks routinely report higher accuracy, but the community lacks a clear account of \emph{where} that advantage comes from and \emph{what evidence} the networks use instead. We answer both questions with a controlled method ladder that crosses two factors, spectral breadth (only the bands the index uses vs.\ all twelve L2A bands) and spatial context (per-pixel gradient boosting vs.\ a U-Net), and compare every rung against the index with a literature, Otsu and label-tuned threshold. On burn-scar delineation (CaBuAr, California) and tree-cover mapping (seven Sentinel-2 regions across five biomes), the all-band U-Net reaches an IoU of \R{iouBurnUnetAll} and \R{iouForestUnetAll} against \R{iouBurnIndexTuned} and \R{iouForestIndexTuned} for the tuned index. A stratified error analysis shows that \todo{X\%} of the burn-scar gain lies in \todo{low-severity / index-ambiguous / boundary} pixels, and that the forest gain is concentrated in \todo{cropland and grassland} confusions. Three independent attribution families, exact TreeSHAP, Integrated Gradients/GradientSHAP and band occlusion, agree that the networks \todo{rely on SWIR-1 (B11) and red-edge bands that the indices ignore}, while a context analysis shows that half of a U-Net's evidence for a pixel lies within \R{resBurnUnetAllContextRfiftyPxMedian} pixels of it. We release the full pipeline so that practitioners can decide, per landscape, when an index is sufficient and when a learned model is worth its cost.
+\end{abstract}
+
+\begin{CCSXML}
+%% Generate the CCSXML block at https://dl.acm.org/ccs and paste it here.
+\end{CCSXML}
+\ccsdesc[500]{Information systems~Geographic information systems}
+\ccsdesc[500]{Computing methodologies~Computer vision}
+\ccsdesc[300]{Computing methodologies~Machine learning}
+
+\keywords{Earth observation, Sentinel-2, burned area mapping, forest mapping, spectral indices, explainable AI, SHAP, Integrated Gradients}
+
+\maketitle
+
+%% ------------------------------------------------------------------
+\section{Introduction}
+
+Spectral indices are the lingua franca of operational Earth observation. The Normalized Burn Ratio (NBR) and its bi-temporal difference dNBR underpin burn-severity products used by fire agencies~\cite{key2006landscape,miller2007rdnbr}, and the Normalized Difference Vegetation Index (NDVI)~\cite{rouse1974ndvi,tucker1979ndvi} is still the first tool reached for when vegetation or forest must be mapped. Indices have three properties that matter to practitioners: they need no training labels, they transfer across sensors, and their decision rule, a threshold on a band ratio, can be explained in a sentence.
+
+Deep segmentation networks trained on Sentinel-2 imagery~\cite{drusch2012sentinel2} consistently outperform index thresholds on burned-area~\cite{knopp2020burned,hu2021unitemporal,pinto2020dating} and land-cover tasks. Yet a reported IoU gain does not tell a fire analyst or a forest agency \emph{whether} to replace a well-understood index with a network. That decision needs answers to two questions that are rarely asked together:
+\begin{enumerate}
+  \item \textbf{When} does the network beat the index? Is the gain spread uniformly, or concentrated in particular burn severities, land covers, or near object boundaries?
+  \item \textbf{Why} does it win? Does it use bands the index ignores, learn a better non-linear rule over the same bands, or exploit spatial context that a per-pixel index cannot see?
+\end{enumerate}
+Post-hoc attribution maps are the usual answer to the second question in Earth observation~\cite{roscher2020explainable,gevaert2022xaieo,tuia2021agenda}, but saliency maps alone are known to be fragile~\cite{adebayo2018sanity}, and an attribution that cannot be checked against the model's behaviour is a weak basis for trusting it in high-stakes settings~\cite{rudin2019stop}.
+
+We address both questions with a design that makes the explanation \emph{testable}. Instead of comparing one index with one network, we build a \emph{method ladder} that crosses spectral breadth (index bands only vs.\ all bands) with spatial context (per-pixel vs.\ convolutional), so that the gap between the index and the full network decomposes into three measurable steps: a learned decision rule, additional spectral evidence, and spatial context. We then ask whether attribution methods recover the same story that the ladder measures directly.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item A factorial \textbf{method ladder} that separates the deep-model advantage into rule, spectrum and space components, evaluated on burn-scar delineation and tree-cover mapping with three index-threshold baselines, including a label-tuned threshold that sees the same training data as the learned models (\S\ref{sec:method}).
+  \item A \textbf{stratified ``when'' analysis} that attributes the error reduction to burn-severity classes, land-cover classes, index-ambiguity bands and object boundaries (\S\ref{sec:when}).
+  \item A \textbf{cross-validated ``why'' analysis} combining exact TreeSHAP~\cite{lundberg2020treeshap}, Integrated Gradients~\cite{sundararajan2017ig} and GradientSHAP~\cite{lundberg2017shap}, band occlusion, a model-randomisation sanity check~\cite{adebayo2018sanity}, and a new \emph{context radius} that measures how far from a pixel a network looks (\S\ref{sec:why}).
+  \item An open, reproducible pipeline on public data (CaBuAr~\cite{cambrin2023cabuar}, Sentinel-2 and ESA WorldCover~\cite{zanaga2022worldcover} via the Planetary Computer~\cite{planetarycomputer2022}) in which every number in this paper is generated by a script. \todo{add repository URL after review}
+\end{itemize}
+
+%% ------------------------------------------------------------------
+\section{Related Work}
+
+\paragraph{Index-based mapping.}
+NBR contrasts near-infrared (B08) with short-wave infrared (B12), which respond in opposite directions to the loss of photosynthetic tissue and the exposure of char and soil after fire; dNBR removes pre-fire background, and its relative form RdNBR corrects for sparse pre-fire vegetation~\cite{key2006landscape,miller2007rdnbr}. Its weaknesses are well documented: performance degrades for low-severity burns and in landscapes with low pre-fire biomass~\cite{roy2006nbr}. NDVI~\cite{tucker1979ndvi} saturates over dense canopy and does not distinguish trees from other green vegetation such as irrigated crops, which is why global forest products rely on multi-band, multi-temporal classifiers rather than a single threshold~\cite{hansen2013forest}. Threshold choice itself is a source of error; automatic histogram methods such as Otsu's~\cite{otsu1979} are common when labels are unavailable.
+
+\paragraph{Deep models for burned area and forest mapping.}
+U-Net variants~\cite{ronneberger2015unet} with ResNet encoders~\cite{he2016resnet} are the standard architecture for Sentinel-2 burned-area segmentation~\cite{knopp2020burned,hu2021unitemporal}, and temporal models further improve dating of burns~\cite{pinto2020dating}. Benchmarks such as CaBuAr~\cite{cambrin2023cabuar} compare networks against each other and, in some cases, against index baselines, but report aggregate scores rather than where the differences arise.
+
+\paragraph{Explainability in Earth observation.}
+Reviews of explainable machine learning in the geosciences~\cite{roscher2020explainable,gevaert2022xaieo} identify attribution maps and feature importance as the most used tools, and call for explanations that yield scientific insight rather than visual plausibility. Gradient methods such as Grad-CAM~\cite{selvaraju2017gradcam} and Integrated Gradients~\cite{sundararajan2017ig}, and Shapley-value methods~\cite{lundberg2017shap,lundberg2020treeshap}, are widely applied, but sanity checks show that some saliency maps are insensitive to the model itself~\cite{adebayo2018sanity}, and deletion-style tests~\cite{petsiuk2018rise} are needed to check faithfulness. Related work by one of the authors applies surrogate-model and attribution explanations to reinforcement-learning control~\cite{akbar2025trustx}. Our work differs from prior Earth-observation XAI studies in that the explanation is not the end point: it is checked against a controlled ablation (the ladder) and against occlusion.
+
+%% ------------------------------------------------------------------
+\section{Method}\label{sec:method}
+
+\subsection{Tasks and indices}
+\textbf{Burn scars.} Input is the post-fire Sentinel-2 L2A image and, unless stated otherwise, the pre-fire image of the same area (24 channels). The reference index is $\mathrm{dNBR} = \mathrm{NBR}_{\text{pre}} - \mathrm{NBR}_{\text{post}}$ with $\mathrm{NBR} = (B08 - B12)/(B08 + B12)$.
+\textbf{Forest.} Input is a cloud-masked growing-season median composite (12 channels); the reference index is $\mathrm{NDVI} = (B08 - B04)/(B08 + B04)$.
+
+\subsection{Index baselines}
+Each index is thresholded in three ways, ordered by how much they assume: (i) a \emph{literature} threshold (dNBR $> 0.10$, the lower bound of USGS low severity~\cite{key2006landscape}; NDVI $> 0.5$); (ii) a per-image \emph{Otsu} threshold~\cite{otsu1979}; and (iii) a single \emph{tuned} threshold that maximises pooled IoU on the training split. The tuned threshold uses the same labels as the learned models and is therefore the fair reference; all gains below are reported against it.
+
+\subsection{The method ladder}
+Learned models form a $2\times2$ design:
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+ & per-pixel & spatial \\
+\midrule
+index bands only & \texttt{lgbm\_index} & \texttt{unet\_index} \\
+all bands        & \texttt{lgbm\_all}   & \texttt{unet\_all} \\
+\bottomrule
+\end{tabular}
+\end{center}
+The per-pixel models are LightGBM classifiers~\cite{ke2017lightgbm} on raw reflectance; the spatial models are U-Nets with a ResNet-18 encoder~\cite{ronneberger2015unet,he2016resnet,iakubovskii2019smp}. ``Index bands'' means exactly the bands the index reads (B08 and B12 at both dates for dNBR; B04 and B08 for NDVI). Moving along the ladder isolates three effects:
+\begin{itemize}
+  \item \textbf{Rule}: tuned index $\rightarrow$ \texttt{lgbm\_index}. Same bands and same pixel, but a learned non-linear rule in place of a threshold on a fixed ratio.
+  \item \textbf{Spectrum}: \texttt{lgbm\_index} $\rightarrow$ \texttt{lgbm\_all}. Added bands, still per pixel.
+  \item \textbf{Space}: \texttt{lgbm\_all} $\rightarrow$ \texttt{unet\_all} (and \texttt{lgbm\_index} $\rightarrow$ \texttt{unet\_index}). Added spatial context.
+\end{itemize}
+The two paths through the square give two estimates of each effect, so interactions between spectrum and space are visible.
+
+\subsection{``When'': stratified error attribution}\label{sec:when-method}
+For every test pixel we record its stratum in several families: dNBR severity class (USGS breaks~\cite{key2006landscape}), pre-fire or composite NDVI class, ESA WorldCover land cover (forest task), \emph{index margin} $|v - \tau|$ between the index value and the tuned threshold (ambiguous $<0.05$, near $<0.15$, clear), and \emph{boundary} (within 20\,m of a reference edge). For a method $m$, the error reduction in stratum $s$ is $\Delta_s = E_s(\text{index}) - E_s(m)$, where $E_s$ counts false positives plus false negatives, and we report its share $\Delta_s/\sum_{s'}\Delta_{s'}$ next to the stratum's share of pixels. A stratum whose gain share greatly exceeds its pixel share is where the model earns its advantage.
+
+\subsection{``Why'': attribution with checks}\label{sec:why-method}
+\textbf{Per-pixel models.} We compute exact TreeSHAP values~\cite{lundberg2020treeshap} for LightGBM on a random sample of test pixels, and separately on index-ambiguous pixels.
+
+\textbf{U-Nets.} For each test chip we define the scalar output as the mean logit over the predicted target region and attribute it to input channels with Integrated Gradients~\cite{sundararajan2017ig} (baseline: the training-mean spectrum, i.e.\ zero after standardisation) and GradientSHAP~\cite{lundberg2017shap} (baseline distribution: training chips), using Captum~\cite{kokhlikyan2020captum}. Absolute attributions are summed over space and normalised to a per-channel share.
+
+\textbf{Occlusion.} For every method, including the index, we replace one band (both dates for burn scars) with its training mean and measure the drop in test IoU, a deletion test in the spirit of~\cite{petsiuk2018rise}. Occluding the pre-fire or post-fire stack as a whole measures reliance on bi-temporal change.
+
+\textbf{Checks.} (i) \emph{Faithfulness}: Spearman correlation between gradient band shares and occlusion drops. (ii) \emph{Randomisation}~\cite{adebayo2018sanity}: band shares of a re-initialised network should not match those of the trained one. (iii) \emph{Agreement}: IG vs.\ GradientSHAP rankings.
+
+\textbf{Context radius.} For sampled pixels $p$ we attribute the logit at $p$ alone and compute the cumulative share of $|\text{IG}|$ mass within distance $d$ of $p$. The median radius containing 50\% ($r_{50}$) and 90\% ($r_{90}$) of the mass summarises how far a network looks; a per-pixel model has $r_{50}=r_{90}=0$ by construction.
+
+%% ------------------------------------------------------------------
+\section{Experimental Setup}
+
+\paragraph{Burn scars.} CaBuAr~\cite{cambrin2023cabuar} provides Sentinel-2 L2A pre- and post-fire images of Californian wildfires with burned-area masks derived from CAL FIRE perimeters. We keep events with a pre-fire image, cut $512\times512$ patches into $256\times256$ chips, and use the dataset's folds for splits (folds 0--2 train, 3 validation, 4 test). \todo{number of events/chips per split from prepare\_data.py output}
+
+\paragraph{Forest.} We build 2021 growing-season median composites from Sentinel-2 L2A on the Planetary Computer~\cite{planetarycomputer2022}, masking cloud, shadow and cirrus with the scene classification layer and correcting the processing-baseline offset. Labels are the tree-cover class of ESA WorldCover 2021~\cite{zanaga2022worldcover}. Seven regions span temperate broadleaf (Brittany, France), Himalayan conifer (Murree, Pakistan), tropical forest frontier (Rond\^onia, Brazil), plantations (Riau, Indonesia), boreal (Dalarna, Sweden), montane forest and tea (Mau, Kenya), and irrigated cropland (Sacramento Valley, USA), the last chosen as a hard negative for NDVI. Each region is split into contiguous west-to-east blocks (60/20/20\%) to limit spatial autocorrelation between splits. \todo{chip counts}
+
+\paragraph{Training.} U-Nets use an ImageNet-initialised ResNet-18 encoder with the first convolution adapted to the channel count, AdamW (lr $10^{-3}$, weight decay $10^{-4}$, cosine schedule), batch size 8, 40 epochs, BCE + Dice loss, flips and $90^\circ$ rotations; the checkpoint with best validation IoU is kept. LightGBM uses 2{,}000 sampled pixels per training chip, 63 leaves, learning rate 0.05 and early stopping on validation pixels. Inputs are standardised with training statistics. \todo{hardware and run time per model}
+
+\paragraph{Metrics.} We report pooled pixel IoU and F1 on the test split, with 95\% confidence intervals from 1{,}000 bootstrap resamples of test chips, and the bootstrap probability that a method's IoU exceeds the tuned index.
+
+%% ------------------------------------------------------------------
+\section{Results}
+
+\subsection{How large is the gap, and which step closes it?}
+
+\begin{table*}[t]
+  \caption{Test IoU (95\% bootstrap CI over chips) and F1. Above the line: index baselines; below: the method ladder.}
+  \label{tab:main}
+  \maybeinput{tables/main_results.tex}
+\end{table*}
+
+\begin{figure}[t]
+  \centering
+  \maybefig{\linewidth}{figures/ladder.pdf}
+  \caption{The method ladder. Grey: index baselines; blue: learned models. Error bars are 95\% bootstrap CIs.}
+  \label{fig:ladder}
+\end{figure}
+
+Table~\ref{tab:main} and Figure~\ref{fig:ladder} summarise the ladder. For burn scars, the tuned dNBR threshold reaches an IoU of \R{iouBurnIndexTuned}, the literature threshold \R{iouBurnIndexLiterature} and Otsu \R{iouBurnIndexOtsu}. A learned rule on the same four bands (\texttt{lgbm\_index}) reaches \R{iouBurnLgbmIndex}; adding all bands gives \R{iouBurnLgbmAll}; and spatial context gives \R{iouBurnUnetAll}. For forest, the corresponding values are \R{iouForestIndexTuned}, \R{iouForestLgbmIndex}, \R{iouForestLgbmAll} and \R{iouForestUnetAll}.
+\todo{Interpret: which of rule / spectrum / space contributes most for each task; is unet\_index $>$ lgbm\_all (space beats spectrum) or the reverse? Compare both paths through the square.}
+
+\subsection{When do deep models win?}\label{sec:when}
+
+\begin{table}[t]
+  \caption{Burn scars: where the all-band U-Net removes errors relative to the tuned dNBR threshold, by USGS severity class.}
+  \label{tab:gain-severity}
+  \maybeinput{tables/gain_burn_severity.tex}
+\end{table}
+
+\begin{table}[t]
+  \caption{Forest: where the all-band U-Net removes errors relative to the tuned NDVI threshold, by WorldCover class.}
+  \label{tab:gain-landcover}
+  \maybeinput{tables/gain_forest_landcover.tex}
+\end{table}
+
+\begin{table}[t]
+  \caption{Both tasks: error reduction by index margin (distance of the index value from the tuned threshold).}
+  \label{tab:gain-margin}
+  \maybeinput{tables/gain_burn_index_margin.tex}\\[4pt]
+  \maybeinput{tables/gain_forest_index_margin.tex}
+\end{table}
+
+\todo{Describe Tables~\ref{tab:gain-severity}--\ref{tab:gain-margin}. Expected pattern to check, not to assume: gain concentrated in low/moderate-low severity, in index-ambiguous pixels, and at boundaries for burn scars; in crop/grass/shrub classes for forest (NDVI false positives) and in dense canopy where NDVI saturates. State where the index is already sufficient (e.g.\ high-severity interior pixels), since that is the practical recommendation.}
+
+\begin{figure*}[t]
+  \centering
+  \maybefig{0.49\linewidth}{figures/examples_burn.pdf}\hfill
+  \maybefig{0.49\linewidth}{figures/examples_forest.pdf}
+  \caption{Test chips with the largest IoU margin of the U-Net over the tuned index (IoU in parentheses). Left: burn scars; right: forest.}
+  \label{fig:examples}
+\end{figure*}
+
+\subsection{Why do they win?}\label{sec:why}
+
+\begin{figure*}[t]
+  \centering
+  \maybefig{0.49\linewidth}{figures/bands_burn.pdf}\hfill
+  \maybefig{0.49\linewidth}{figures/bands_forest.pdf}
+  \caption{Band importance from three independent views: U-Net Integrated Gradients share, LightGBM TreeSHAP, and U-Net occlusion IoU drop (each scaled to its maximum). Left: burn scars; right: forest.}
+  \label{fig:bands}
+\end{figure*}
+
+\paragraph{Which bands?} Figure~\ref{fig:bands} compares band importance across the three views. \todo{Name the top bands per task and view. Key question: do bands outside the index (e.g.\ B11 SWIR-1, red-edge B05--B07, B8A) carry substantial weight? Does TreeSHAP on index-ambiguous pixels shift weight toward non-index bands compared with all pixels?}
+
+\paragraph{Are the explanations trustworthy?} Gradient band shares and occlusion drops have a Spearman correlation of \R{resBurnUnetAllIgVsOcclusionSpearman} (burn) and \R{resForestUnetAllIgVsOcclusionSpearman} (forest); IG and GradientSHAP agree at \R{resBurnUnetAllIgVsGradshapSpearman} and \R{resForestUnetAllIgVsGradshapSpearman}. After randomising the network weights, the band ranking correlates with the trained ranking at only \R{resBurnUnetAllRandomisationSpearman} (burn) and \R{resForestUnetAllRandomisationSpearman} (forest), so the attributions depend on what the model has learned. \todo{Interpret; if randomisation correlation is high, report it honestly as a limitation of the gradient view and lean on occlusion and TreeSHAP.}
+
+\paragraph{How much does bi-temporal change matter?} \todo{From occlusion.csv: IoU drop when the whole pre-fire stack is occluded vs.\ the post-fire stack, for dNBR, lgbm\_all and unet\_all.}
+
+\begin{figure}[t]
+  \centering
+  \maybefig{\linewidth}{figures/context.pdf}
+  \caption{Cumulative share of a pixel's Integrated Gradients mass within a given distance. Steeper curves mean more local evidence.}
+  \label{fig:context}
+\end{figure}
+
+\paragraph{How far do the networks look?} Figure~\ref{fig:context} shows that half of a burn U-Net's evidence for a pixel lies within \R{resBurnUnetAllContextRfiftyPxMedian} pixels and 90\% within \R{resBurnUnetAllContextRninetyPxMedian} pixels (forest: \R{resForestUnetAllContextRfiftyPxMedian} and \R{resForestUnetAllContextRninetyPxMedian}; 1 pixel = 10\,m). The pixel itself carries \R{resBurnUnetAllContextSelfShareMean} of its own attribution for burn scars and \R{resForestUnetAllContextSelfShareMean} for forest. \todo{Relate to the boundary stratum and to the space step of the ladder.}
+
+%% ------------------------------------------------------------------
+\section{Discussion}
+
+\paragraph{Practical guidance.} \todo{Turn the results into a decision rule for practitioners: e.g.\ if a region's pixels are mostly index-clear and high-severity, the tuned index is within X IoU of the network; for low-severity fires, heterogeneous agricultural mosaics, or boundary-critical products, a learned model is justified. Note that a tuned threshold already recovers much of the gap over the literature value, which costs only a handful of labels.}
+
+\paragraph{Explanations that can be checked.} The ladder offers a ground truth for the attribution analysis: if attributions say a network relies on non-index bands, the spectrum step of the ladder should be large, and occluding those bands should hurt. \todo{State whether the three views agreed with the ladder, and where they did not.}
+
+\paragraph{Limitations.} (i) Forest labels come from ESA WorldCover, itself a classifier driven by Sentinel data; learned models may partly reproduce WorldCover's decision rule rather than ground truth, which favours them over NDVI. A manually verified test subset would remove this concern. \todo{add if done} (ii) CaBuAr labels are agency perimeters, which include unburned islands inside the fire perimeter; boundary-stratum results should be read with this in mind. (iii) Both tasks use a single architecture and encoder; larger or foundation-model encoders~\cite{wang2022ssl4eo} may shift the balance between spectrum and space. (iv) Networks may exploit correlated context, such as roads or field patterns, a form of shortcut learning~\cite{geirhos2020shortcut}; the context radius quantifies but does not prevent this. (v) Results are for one fire region and seven forest regions; transfer to other biomes is untested.
+
+%% ------------------------------------------------------------------
+\section{Conclusion}
+We asked when and why deep models outperform the NBR and NDVI indices that operational Earth observation still relies on. A factorial method ladder, a stratified error analysis and three cross-checked attribution families together show that \todo{one-sentence answer}. The pipeline is public and every number in this paper is generated by it, so the analysis can be repeated for new regions, sensors and models.
+
+\begin{acks}
+\todo{funding / compute acknowledgements; keep empty for anonymous review}
+\end{acks}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs}
+
+\end{document}
