@@ -1,0 +1,14 @@
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Effect & Step & $\Delta$IoU burn \\
+\midrule
+Threshold calibration & literature $\to$ tuned $\tau$ & +0.116 \\
+Learned rule & index $\to$ GBDT, index bands & +0.076 \\
+Spectrum (no context) & GBDT index $\to$ GBDT all & +0.041 \\
+Space (after spectrum) & GBDT all $\to$ U-Net all & -0.085 \\
+Space (index bands) & GBDT index $\to$ U-Net index & +0.071 \\
+Spectrum (with context) & U-Net index $\to$ U-Net all & -0.115 \\
+\midrule
+Total learned gain & tuned index $\to$ U-Net all & +0.032 \\
+\bottomrule
+\end{tabular}

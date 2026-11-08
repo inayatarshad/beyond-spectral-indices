@@ -15,7 +15,8 @@ if cfg["source"]["name"] == "cabuar":
     from bsi.data import cabuar
 
     if args.inspect:
-        cabuar.inspect(cabuar.download(cfg["source"]["hf_repo"], cfg["source"]["hf_file"]))
+        src = cfg["source"]
+        cabuar.inspect(cabuar.download(src["hf_repo"], src["hf_file"], src.get("local_file")))
         raise SystemExit
     cabuar.prepare(cfg)
 else:

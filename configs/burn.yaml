@@ -4,11 +4,13 @@ use_pre: true               # stack pre-fire bands so dNBR and the models see th
 data_dir: data/burn
 run_dir: runs/burn
 seed: 0
+pixel_size_m: 20          # CaBuAr ships all bands resampled to the 20 m grid
 
 source:
   name: cabuar
   hf_repo: DarthReca/california_burned_areas
-  hf_file: null             # null = first *.hdf5 in the repo; run prepare_data.py --inspect to check
+  hf_file: raw/patched/512x512.hdf5
+  local_file: data/raw/cabuar_512x512.hdf5   # used instead of downloading when present
   chip_size: 256            # 512x512 patches are cut into 4 chips
   folds: {train: [0, 1, 2], val: [3], test: [4]}
 
@@ -19,10 +21,11 @@ index:
 unet:
   encoder: resnet18
   encoder_weights: imagenet   # first conv is adapted to the channel count by smp
-  epochs: 40
+  epochs: 30
   batch_size: 8
   lr: 0.001
-  num_workers: 2
+  num_workers: 0
+  crop_size: 128            # random training crops; evaluation uses full chips (CPU budget)
 
 lgbm:
   pixels_per_chip: 2000

@@ -1,0 +1,40 @@
+# Burn-scar delineation on CaBuAr (Sentinel-2 L2A, California, CAL FIRE masks).
+task: burn
+use_pre: true               # stack pre-fire bands so dNBR and the models see the same information
+data_dir: data/burn
+run_dir: runs/burn
+seed: 0
+pixel_size_m: 20          # CaBuAr ships all bands resampled to the 20 m grid
+
+source:
+  name: cabuar
+  hf_repo: DarthReca/california_burned_areas
+  hf_file: raw/patched/512x512.hdf5
+  local_file: data/raw/cabuar_512x512.hdf5   # used instead of downloading when present
+  chip_size: 256            # 512x512 patches are cut into 4 chips
+  folds: {train: [0, 1, 2], val: [3], test: [4]}
+
+index:
+  name: dnbr                # nbr on the post image alone if use_pre is false
+  literature_threshold: 0.10   # USGS lower bound of "low severity"
+
+unet:
+  encoder: resnet18
+  encoder_weights: imagenet   # first conv is adapted to the channel count by smp
+  epochs: 4
+  batch_size: 8
+  lr: 0.001
+  num_workers: 0
+  crop_size: 128            # random training crops; evaluation uses full chips (CPU budget)
+
+lgbm:
+  pixels_per_chip: 2000
+  num_leaves: 63
+  n_estimators: 400
+  learning_rate: 0.05
+
+explain:
+  n_chips: 16               # test chips used for attribution
+  ig_steps: 12
+  context_pixels_per_chip: 3
+  shap_pixels: 3000         # TreeSHAP sample for the LightGBM rungs

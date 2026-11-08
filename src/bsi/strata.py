@@ -17,17 +17,17 @@ DNBR_BINS = [-np.inf, -0.10, 0.10, 0.27, 0.44, 0.66, np.inf]
 DNBR_LABELS = ["regrowth", "unburned", "low", "mod_low", "mod_high", "high"]
 NDVI_BINS = [-np.inf, 0.2, 0.4, 0.6, np.inf]
 NDVI_LABELS = ["ndvi<0.2", "0.2-0.4", "0.4-0.6", "ndvi>0.6"]
-EDGE_PX = 2
+EDGE_M = 20  # boundary stratum: within 20 m of a reference edge
 
 
 def _bin(values, bins, labels):
     return np.array(labels, dtype=object)[np.clip(np.digitize(values, bins) - 1, 0, len(labels) - 1)]
 
 
-def boundary(mask: np.ndarray) -> np.ndarray:
+def boundary(mask: np.ndarray, pixel_size_m: float) -> np.ndarray:
     target = mask == 1
     dist = np.where(target, distance_transform_edt(target), distance_transform_edt(~target))
-    return np.where(dist <= EDGE_PX, "edge", "interior").astype(object)
+    return np.where(dist * pixel_size_m <= EDGE_M, "edge", "interior").astype(object)
 
 
 def index_margin(image, cfg, tuned_threshold) -> np.ndarray:
@@ -39,7 +39,7 @@ def index_margin(image, cfg, tuned_threshold) -> np.ndarray:
 def chip_strata(chip: dict, cfg: dict, tuned_threshold: float) -> dict[str, np.ndarray]:
     image, task = chip["image"], cfg["task"]
     names = channel_names(task, cfg["use_pre"])
-    s = {"boundary": boundary(chip["mask"]), "index_margin": index_margin(image, cfg, tuned_threshold)}
+    s = {"boundary": boundary(chip["mask"], cfg["pixel_size_m"]), "index_margin": index_margin(image, cfg, tuned_threshold)}
 
     pre = "pre_" if task == "burn" and cfg["use_pre"] else ("post_" if task == "burn" else "")
     red, nir = image[channel_index(names, "B04", pre)], image[channel_index(names, "B08", pre)]

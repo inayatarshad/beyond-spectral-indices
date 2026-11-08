@@ -52,26 +52,25 @@ class PixelLogit(torch.nn.Module):
         return self.model(x)[:, self.r, self.c]
 
 
-def context_profile(model, x: torch.Tensor, pixels: list[tuple[int, int]], steps: int,
-                    max_radius: int = 64) -> np.ndarray:
-    """Cumulative share of |IG| mass within radius d of each target pixel, d = 0..max_radius (pixels)."""
+def context_profile(model, x: torch.Tensor, pixels: list[tuple[int, int]], steps: int) -> np.ndarray:
+    """Cumulative share of |IG| mass within radius d of each target pixel, d = 0..chip diagonal (pixels)."""
     _, _, h, w = x.shape
     yy, xx = np.mgrid[0:h, 0:w]
+    n_bins = int(np.ceil(np.hypot(h, w))) + 1
     curves = []
     for r, c in pixels:
         attr = IntegratedGradients(PixelLogit(model, r, c)).attribute(
             x, baselines=torch.zeros_like(x), n_steps=steps, internal_batch_size=8)
         mass = attr[0].abs().sum(0).detach().cpu().numpy()
-        dist = np.hypot(yy - r, xx - c)
-        hist = np.bincount(np.minimum(dist, max_radius + 1).astype(int).ravel(), mass.ravel(),
-                           minlength=max_radius + 2)[: max_radius + 1]
+        dist = np.rint(np.hypot(yy - r, xx - c)).astype(int)
+        hist = np.bincount(dist.ravel(), mass.ravel(), minlength=n_bins)[:n_bins]
         curves.append(np.cumsum(hist) / (mass.sum() + 1e-12))
     return np.array(curves)
 
 
 def radius_at(curves: np.ndarray, share: float) -> np.ndarray:
     """Smallest radius whose disc holds `share` of the attribution mass, per curve."""
-    return np.argmax(curves >= share, axis=1)
+    return np.argmax(curves >= share - 1e-9, axis=1)
 
 
 def occlusion(predict_fn, chips: list[dict], groups: dict[str, list[int]], mean: np.ndarray) -> dict[str, float]:

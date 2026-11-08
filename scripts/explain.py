@@ -85,11 +85,13 @@ for variant in [m for m in ("unet_index", "unet_all") if exists(m)]:
             v = np.mean([s[method] for s in lst], 0)
             for i, n in enumerate(names):
                 attr_rows.append({"variant": variant, "state": state, "attribution": method, "channel": n, "share": v[i]})
-    ig_tr = np.mean([s["ig"] for s in shares["trained"]], 0)
-    ig_rd = np.mean([s["ig"] for s in shares["random"]], 0)
+    # rank statistics only over the channels this variant reads; the rest are exactly zero
+    used = channels_for(variant, cfg["task"], cfg["use_pre"])
+    ig_tr = np.mean([s["ig"] for s in shares["trained"]], 0)[used]
+    ig_rd = np.mean([s["ig"] for s in shares["random"]], 0)[used]
     summary[f"{variant}_randomisation_spearman"] = rank_agreement(ig_tr, ig_rd)
     if "gradshap" in shares["trained"][0]:
-        gs_tr = np.mean([s["gradshap"] for s in shares["trained"]], 0)
+        gs_tr = np.mean([s["gradshap"] for s in shares["trained"]], 0)[used]
         summary[f"{variant}_ig_vs_gradshap_spearman"] = rank_agreement(ig_tr, gs_tr)
     curves = np.concatenate(curves)
     for d, v in enumerate(curves.mean(0)):
@@ -112,7 +114,8 @@ occ.to_csv(out / "occlusion.csv", index=False)
 
 # faithfulness: do gradient attributions rank bands the way occlusion does?
 attr = pd.DataFrame(attr_rows)
-for variant in attr["variant"].unique() if len(attr) else []:
+# (only for unet_all: the index-band variants read two bands, too few to rank)
+for variant in [v for v in (attr["variant"].unique() if len(attr) else []) if v == "unet_all"]:
     a = attr[(attr.variant == variant) & (attr.state == "trained") & (attr.attribution == "ig")]
     band_share = [a[a.channel.str.endswith(b)].share.sum() for b in S2_BANDS]
     o = occ[(occ.method == variant) & occ.group.isin(S2_BANDS)].set_index("group").loc[S2_BANDS, "iou_drop"]

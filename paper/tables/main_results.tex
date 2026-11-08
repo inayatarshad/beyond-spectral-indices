@@ -1,0 +1,16 @@
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Method & \multicolumn{3}{c}{Burn scars} \\
+\cmidrule(lr){2-4}
+ & IoU [95\% CI] & F1 & Prec./Rec. \\
+\midrule
+Index, literature $\tau$ & 0.196 {\scriptsize[0.140, 0.251]} & 0.327 & 0.20/0.91 \\
+Index, Otsu $\tau$ & 0.078 {\scriptsize[0.055, 0.101]} & 0.145 & 0.08/0.61 \\
+Index, tuned $\tau$ & 0.312 {\scriptsize[0.237, 0.381]} & 0.476 & 0.38/0.65 \\
+\midrule
+GBDT, index bands & 0.388 {\scriptsize[0.310, 0.455]} & 0.559 & 0.58/0.54 \\
+GBDT, all bands & 0.429 {\scriptsize[0.344, 0.512]} & 0.600 & 0.61/0.60 \\
+U-Net, index bands & \textbf{0.459} {\scriptsize[0.358, 0.550]} & 0.629 & 0.54/0.75 \\
+U-Net, all bands & 0.344 {\scriptsize[0.247, 0.437]} & 0.512 & 0.40/0.70 \\
+\bottomrule
+\end{tabular}

@@ -6,6 +6,7 @@ use_pre: false
 data_dir: data/forest
 run_dir: runs/forest
 seed: 0
+pixel_size_m: 10
 
 source:
   name: planetary_computer
@@ -14,15 +15,15 @@ source:
   max_cloud: 30
   chip_size: 256
   split_fractions: {train: 0.6, val: 0.2, test: 0.2}   # contiguous west-to-east column blocks per AOI
-  # name: [min_lon, min_lat, max_lon, max_lat]; chosen to cover distinct biomes and NDVI confounders
+  # name: [min_lon, min_lat, max_lon, max_lat]; ~0.4 x 0.3 deg each, chosen to cover distinct biomes and NDVI confounders
   aois:
-    brittany_paimpont:   [-2.30, 47.97, -2.12, 48.09]   # temperate broadleaf, hedgerow farmland
-    murree_galiyat:      [73.33, 33.86, 73.51, 33.98]   # Himalayan conifer, terraces
-    rondonia_frontier:   [-63.05, -10.05, -62.87, -9.87] # tropical forest vs pasture
-    riau_plantations:    [101.40, 0.40, 101.58, 0.58]   # oil palm / acacia plantations
-    dalarna_boreal:      [15.00, 61.00, 15.30, 61.10]   # boreal conifer, clear-cuts, bogs
-    mau_forest:          [35.65, -0.60, 35.83, -0.42]   # montane forest vs tea and cropland
-    sacramento_valley:   [-121.95, 38.95, -121.77, 39.13] # irrigated crops (high NDVI, no trees)
+    brittany_paimpont:  [-2.41, 47.88, -2.01, 48.18]    # temperate broadleaf, hedgerow farmland
+    murree_galiyat:     [73.22, 33.77, 73.62, 34.07]    # Himalayan conifer, terraces
+    rondonia_frontier:  [-63.16, -10.11, -62.76, -9.81] # tropical forest vs pasture
+    riau_plantations:   [101.29, 0.34, 101.69, 0.64]    # oil palm / acacia plantations
+    dalarna_boreal:     [14.95, 60.9, 15.35, 61.2]      # boreal conifer, clear-cuts, bogs
+    mau_forest:         [35.54, -0.66, 35.94, -0.36]    # montane forest vs tea and cropland
+    sacramento_valley:  [-122.06, 38.89, -121.66, 39.19]# irrigated crops (high NDVI, no trees)
 
 index:
   name: ndvi
@@ -31,10 +32,11 @@ index:
 unet:
   encoder: resnet18
   encoder_weights: imagenet
-  epochs: 40
+  epochs: 30
   batch_size: 8
   lr: 0.001
-  num_workers: 2
+  num_workers: 0
+  crop_size: 128            # random training crops; evaluation uses full chips (CPU budget)
 
 lgbm:
   pixels_per_chip: 2000

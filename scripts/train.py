@@ -60,7 +60,8 @@ def val_iou(model, loader, device):
 device = "cuda" if torch.cuda.is_available() else "cpu"
 stats = compute_band_stats(cfg["data_dir"])
 u = cfg["unet"]
-train_dl = DataLoader(ChipDataset(cfg["data_dir"], "train", stats, augment=True), batch_size=u["batch_size"],
+train_dl = DataLoader(ChipDataset(cfg["data_dir"], "train", stats, augment=True, crop=u.get("crop_size")),
+                      batch_size=u["batch_size"],
                       shuffle=True, num_workers=u["num_workers"], drop_last=True)
 val_dl = DataLoader(ChipDataset(cfg["data_dir"], "val", stats), batch_size=u["batch_size"],
                     num_workers=u["num_workers"])
