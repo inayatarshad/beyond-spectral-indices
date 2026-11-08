@@ -69,7 +69,8 @@ model = build_unet(cfg, args.variant).to(device)
 opt = torch.optim.AdamW(model.parameters(), lr=u["lr"], weight_decay=1e-4)
 sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=u["epochs"])
 
-log, best = [], -1.0
+log, best, best_epoch = [], -1.0, 0
+patience = u.get("patience")  # early stopping on validation IoU; None trains all epochs
 for epoch in range(u["epochs"]):
     model.train()
     t0, total = time.time(), 0.0
@@ -85,7 +86,10 @@ for epoch in range(u["epochs"]):
     log.append({"epoch": epoch, "loss": total / len(train_dl), "val_iou": iou, "seconds": time.time() - t0})
     print(log[-1])
     if iou > best:
-        best = iou
+        best, best_epoch = iou, epoch
         torch.save(model.state_dict(), out / "model.pt")
+    if patience and epoch - best_epoch >= patience:
+        print(f"early stop at epoch {epoch} (best {best_epoch})")
+        break
 (out / "train_log.json").write_text(json.dumps(log, indent=2))
 print(f"best val IoU {best:.4f}")

@@ -24,5 +24,6 @@ else:
 
     planetary.prepare(cfg)
 
-stats = compute_band_stats(cfg["data_dir"])
-print("band means:", stats["mean"].round(4))
+if (cfg["data_dir"] / "chips" / "train").exists():  # fold-only layouts (run_cv.py) compute stats per fold
+    stats = compute_band_stats(cfg["data_dir"])
+    print("band means:", stats["mean"].round(4))
